@@ -1,0 +1,139 @@
+id: pipeline_avantages_sportifs
+namespace: projet_12
+
+description: >
+  Pipeline POC pour nettoyer les données RH et sportives, fusionner les sources,
+  simuler des activités Strava, calculer les distances domicile-entreprise,
+  contrôler la qualité avec Great Expectations, préparer les sorties Power BI
+  et envoyer une notification Slack.
+
+labels:
+  projet: projet_12
+  domaine: rh_sport
+  niveau: poc
+
+tasks:
+  - id: demarrage
+    type: io.kestra.plugin.core.log.Log
+    message: "Démarrage du pipeline Projet 12 - avantages sportifs."
+
+  - id: preparer_repertoires
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - mkdir -p /workspace/staging /workspace/outputs
+
+  - id: nettoyer_donnees
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        python scripts/clean_data.py
+
+  - id: fusionner_donnees
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        python scripts/merge_data.py
+
+  - id: simuler_donnees_strava
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        pip install -r requirements.txt
+        python scripts/simulate_strava.py
+
+  - id: calculer_distances
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        python scripts/calculate_distances.py
+
+  - id: controler_qualite_donnees
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        pip install -r requirements.txt
+        python scripts/validate_data_gx.py
+
+  - id: preparer_power_bi
+    type: io.kestra.plugin.core.log.Log
+    message: >
+      Sorties Power BI disponibles dans outputs/: donnees_fusionnees.csv,
+      activites_strava_simulees.csv, resume_analyse.json, validation_distances.json
+      et rapport_qualite_great_expectations.json. En production, ces fichiers
+      peuvent être charges dans une base SQL ou un data warehouse puis consommes
+      par Power BI.
+
+  - id: notifier_slack
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        pip install -r requirements.txt
+        python scripts/notify_slack.py
+
+  - id: monitoring
+    type: io.kestra.plugin.core.log.Log
+    message: >
+      Monitoring POC: consulter les exécutions, logs et durées dans Kestra.
+      Évolution production: exposer les métriques Kestra vers Prometheus,
+      construire des dashboards Grafana et ajouter des alertes sur échec,
+      durée anormale ou volume de données incohérent.
+
+  - id: evolutions_prod_cdc_debezium
+    type: io.kestra.plugin.core.log.Log
+    message: >
+      Évolution production facultative: ajouter Debezium pour le CDC afin de
+      capturer en temps réel les changements des sources RH, sportives ou
+      Strava-like. Le CDC alimenterait une base ou un topic, puis Kestra
+      orchestrerait les contrôles, la consolidation et les exports Power BI.
+
+  - id: fin
+    type: io.kestra.plugin.core.log.Log
+    message: "Pipeline Projet 12 termine."
