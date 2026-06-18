@@ -2,12 +2,33 @@ import csv
 import json
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def load_env_file(path):
+    try:
+        from dotenv import load_dotenv
+    except ModuleNotFoundError:
+        if not path.exists():
+            return
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        return
+
+    load_dotenv(path)
+
+
+load_env_file(BASE_DIR / ".env")
 RH_FILE = BASE_DIR / "Données+RH.csv"
 SPORT_FILE = BASE_DIR / "Données+Sportive.csv"
 COMPANY_ADDRESS = "1362 Av. des Platanes, 34970 Lattes, France"
@@ -136,8 +157,27 @@ def fetch_distance_matrix(origin, mode="driving"):
     if mode == "transit":
         params["departure_time"] = int(time.time())
     url = "https://maps.googleapis.com/maps/api/distancematrix/json?" + urllib.parse.urlencode(params)
-    with urllib.request.urlopen(url) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return {
+            "status": f"HTTP_{exc.code}",
+            "distance_meters": None,
+            "duration_seconds": None,
+            "distance_text": None,
+            "duration_text": None,
+            "mode": mode,
+        }
+    except urllib.error.URLError as exc:
+        return {
+            "status": f"NETWORK_ERROR: {exc.reason}",
+            "distance_meters": None,
+            "duration_seconds": None,
+            "distance_text": None,
+            "duration_text": None,
+            "mode": mode,
+        }
     status = payload.get("status")
     if status != "OK":
         return {
@@ -177,12 +217,15 @@ def validate_commute(origin, deplacement):
     mode = get_google_maps_mode(deplacement)
     cache = load_cache()
     cache_key = f"{origin}|{mode}"
-    if cache_key in cache:
+    if cache_key in cache and not (
+        GOOGLE_MAPS_API_KEY and cache[cache_key].get("status") == "NO_API_KEY"
+    ):
         result = cache[cache_key]
     else:
         result = fetch_distance_matrix(origin, mode=mode)
-        cache[cache_key] = result
-        save_cache(cache)
+        if not str(result["status"]).startswith(("HTTP_", "NETWORK_ERROR")):
+            cache[cache_key] = result
+            save_cache(cache)
         time.sleep(0.2)
     distance_km = None
     suspicious = False
