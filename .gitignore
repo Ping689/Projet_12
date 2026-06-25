@@ -8,3 +8,9 @@ __pycache__/
 *.xlsx
 *.json   
 *.pdf
+
+# dbt
+dbt_avantages_sportifs/target/
+dbt_avantages_sportifs/logs/
+dbt_avantages_sportifs/dbt_packages/
+dbt_avantages_sportifs/.user.yml

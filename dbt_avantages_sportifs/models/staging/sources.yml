@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: raw_sources
+    database: "{{ env_var('POSTGRES_DB') }}"
+    schema: public
+    tables:
+      - name: raw_rh_employes
+      - name: raw_sport_employes
+      - name: raw_activites_sportives
+      - name: raw_validation_distances

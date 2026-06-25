@@ -5,9 +5,21 @@ from pathlib import Path
 import pandas as pd
 from great_expectations.dataset import PandasDataset
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+import csv
 
-import analyse_donnees
+BASE_DIR = Path(__file__).resolve().parents[1]
+RH_FILE = BASE_DIR / "Données+RH.csv"
+SPORT_FILE = BASE_DIR / "Données+Sportive.csv"
+
+def read_csv(path):
+    with path.open("r", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter=";")
+        if reader.fieldnames:
+            reader.fieldnames = [name.strip().lstrip("\ufeff") for name in reader.fieldnames]
+        return [
+            {k.strip(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k is not None}
+            for row in reader
+        ]
 
 
 OUTPUTS_DIR = Path("outputs")
@@ -21,11 +33,21 @@ def add_result(results, dataset_name, result):
 
 
 def validate_rh(results):
-    rows = analyse_donnees.read_csv(analyse_donnees.RH_FILE)
+    rows = read_csv(RH_FILE)
     df = pd.DataFrame(rows)
     df["Salaire brut numeric"] = pd.to_numeric(df["Salaire brut"].str.replace(",", "."), errors="coerce")
     df["Nombre de jours de CP numeric"] = pd.to_numeric(
         df["Nombre de jours de CP"].str.replace(",", "."),
+        errors="coerce",
+    )
+    df["Date de naissance parsed"] = pd.to_datetime(
+        df["Date de naissance"],
+        format="%d/%m/%Y",
+        errors="coerce",
+    )
+    df["Date d'embauche parsed"] = pd.to_datetime(
+        df["Date d'embauche"],
+        format="%d/%m/%Y",
         errors="coerce",
     )
 
@@ -44,6 +66,8 @@ def validate_rh(results):
         "Moyen de déplacement",
         "Salaire brut numeric",
         "Nombre de jours de CP numeric",
+        "Date de naissance parsed",
+        "Date d'embauche parsed",
     ]
 
     add_result(results, "rh", dataset.expect_table_columns_to_match_set(expected_columns, exact_match=True))
@@ -74,6 +98,8 @@ def validate_rh(results):
         "rh",
         dataset.expect_column_values_to_match_regex("Date d'embauche", r"^\d{1,2}/\d{1,2}/\d{4}$"),
     )
+    add_result(results, "rh", dataset.expect_column_values_to_not_be_null("Date de naissance parsed"))
+    add_result(results, "rh", dataset.expect_column_values_to_not_be_null("Date d'embauche parsed"))
     add_result(results, "rh", dataset.expect_column_values_to_not_be_null("Salaire brut numeric"))
     add_result(results, "rh", dataset.expect_column_min_to_be_between("Salaire brut numeric", min_value=0))
     add_result(results, "rh", dataset.expect_column_values_to_not_be_null("Nombre de jours de CP numeric"))
@@ -81,7 +107,7 @@ def validate_rh(results):
 
 
 def validate_sport(results):
-    rows = analyse_donnees.read_csv(analyse_donnees.SPORT_FILE)
+    rows = read_csv(SPORT_FILE)
     dataset = PandasDataset(pd.DataFrame(rows))
 
     add_result(
@@ -127,12 +153,18 @@ def validate_strava(results):
         return
 
     df = pd.read_csv(strava_file, sep=";")
+    df["activity_date parsed"] = pd.to_datetime(
+        df["activity_date"],
+        format="%Y-%m-%d",
+        errors="coerce",
+    )
     dataset = PandasDataset(df)
 
     add_result(results, "strava", dataset.expect_column_values_to_not_be_null("activity_id"))
     add_result(results, "strava", dataset.expect_column_values_to_be_unique("activity_id"))
     add_result(results, "strava", dataset.expect_column_values_to_not_be_null("employee_id"))
     add_result(results, "strava", dataset.expect_column_values_to_match_regex("activity_date", r"^\d{4}-\d{2}-\d{2}$"))
+    add_result(results, "strava", dataset.expect_column_values_to_not_be_null("activity_date parsed"))
     add_result(results, "strava", dataset.expect_column_values_to_be_in_set("activity_type", ["Run", "Ride", "Walk", "Swim", "Hike"]))
     add_result(results, "strava", dataset.expect_column_min_to_be_between("distance_km", min_value=0))
     add_result(results, "strava", dataset.expect_column_min_to_be_between("duration_minutes", min_value=0))

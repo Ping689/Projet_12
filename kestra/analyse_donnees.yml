@@ -26,9 +26,9 @@ tasks:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
     containerImage: python:3.12-slim
     commands:
-      - mkdir -p /workspace/staging /workspace/outputs
+      - mkdir -p /workspace/outputs
 
-  - id: nettoyer_donnees
+  - id: initialiser_base_donnees
     type: io.kestra.plugin.scripts.shell.Commands
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
@@ -39,22 +39,10 @@ tasks:
     commands:
       - |
         cd /workspace
-        python scripts/clean_data.py
-
-  - id: fusionner_donnees
-    type: io.kestra.plugin.scripts.shell.Commands
-    taskRunner:
-      type: io.kestra.plugin.scripts.runner.docker.Docker
-      pullPolicy: IF_NOT_PRESENT
-      volumes:
-        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
-    commands:
-      - |
-        cd /workspace
-        python scripts/merge_data.py
-
-  - id: simuler_donnees_strava
+        pip install -r requirements.txt
+        python scripts/init_db.py
+  
+  - id: generer_activites_postgres
     type: io.kestra.plugin.scripts.shell.Commands
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
@@ -67,6 +55,20 @@ tasks:
         cd /workspace
         pip install -r requirements.txt
         python scripts/simulate_strava.py
+
+  - id: notifier_activites_slack
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        pip install -r requirements.txt
+        python scripts/notify_slack.py
 
   - id: calculer_distances
     type: io.kestra.plugin.scripts.shell.Commands
@@ -95,14 +97,31 @@ tasks:
         pip install -r requirements.txt
         python scripts/validate_data_gx.py
 
+  - id: calculer_impact_financier
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+    containerImage: python:3.12-slim
+    commands:
+      - |
+        cd /workspace
+        pip install -r requirements.txt
+        cd dbt_avantages_sportifs
+        dbt run --profiles-dir .
+        cd /workspace
+        python scripts/export_dbt_outputs.py
+
   - id: preparer_power_bi
     type: io.kestra.plugin.core.log.Log
     message: >
       Sorties Power BI disponibles dans outputs/: donnees_fusionnees.csv,
-      activites_strava_simulees.csv, resume_analyse.json, validation_distances.json
-      et rapport_qualite_great_expectations.json. En production, ces fichiers
-      peuvent être charges dans une base SQL ou un data warehouse puis consommes
-      par Power BI.
+      donnees_financieres.csv, impact_financier.json, activites_strava_simulees.csv, 
+      resume_analyse.json, validation_distances.json et rapport_qualite_great_expectations.json. 
+      En production, ces fichiers peuvent être charges dans une base SQL ou un data 
+      warehouse puis consommes par Power BI.
 
   - id: notifier_slack
     type: io.kestra.plugin.scripts.shell.Commands
@@ -116,7 +135,7 @@ tasks:
       - |
         cd /workspace
         pip install -r requirements.txt
-        python scripts/notify_slack.py
+        python scripts/notify_pipeline.py
 
   - id: monitoring
     type: io.kestra.plugin.core.log.Log
