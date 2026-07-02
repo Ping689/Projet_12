@@ -108,7 +108,7 @@ python scripts/calculate_distances.py
 ```
 
 ### Étape 3 : Enregistrer le connecteur CDC Debezium
-Déclarer la table `raw_activites_sportives` auprès de Debezium Connect :
+Déclarer la table `activites_sportives` auprès de Debezium Connect :
 ```powershell
 python scripts/register_debezium.py
 ```
