@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 
 QUERY_RECENT_ACTIVITIES = """
 SELECT
+    a.id_salarie,
     rh.nom,
     rh.prenom,
     a.sport_type,
@@ -16,8 +17,8 @@ SELECT
 FROM stg_activites_sportives a
 JOIN stg_rh_employes rh
     ON a.id_salarie = rh.id_salarie
-ORDER BY RANDOM()
-LIMIT 3
+ORDER BY a.id ASC
+LIMIT 50
 """
 
 
@@ -72,10 +73,18 @@ def main():
     engine = get_postgres_engine()
     activities = pd.read_sql(QUERY_RECENT_ACTIVITIES, engine)
 
+    seen_salaries = set()
+    count = 0
     for _, activity in activities.iterrows():
-        response = requests.post(webhook_url, json=build_message(activity), timeout=15)
-        response.raise_for_status()
-        print(f"Notification activite envoyee: {response.status_code}")
+        sal_id = activity["id_salarie"]
+        if sal_id not in seen_salaries:
+            seen_salaries.add(sal_id)
+            response = requests.post(webhook_url, json=build_message(activity), timeout=15)
+            response.raise_for_status()
+            print(f"Notification activite envoyee: {response.status_code}")
+            count += 1
+            if count == 3:
+                break
 
 
 if __name__ == "__main__":

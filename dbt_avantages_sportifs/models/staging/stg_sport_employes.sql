@@ -1,7 +1,7 @@
 {{ config(materialized='view') }}
 
 WITH raw_sport AS (
-    SELECT * FROM {{ source('raw_sources', 'raw_sport_employes') }}
+    SELECT * FROM {{ source('raw_sources', 'sport_employes') }}
 )
 
 SELECT

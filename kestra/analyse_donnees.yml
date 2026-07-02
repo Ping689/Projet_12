@@ -12,6 +12,12 @@ labels:
   domaine: rh_sport
   niveau: poc
 
+inputs:
+  - id: prime_percentage
+    type: FLOAT
+    defaults: 0.05
+    description: "Pourcentage de la prime sportive (ex. 0.05 pour 5%)"
+
 tasks:
   - id: demarrage
     type: io.kestra.plugin.core.log.Log
@@ -24,7 +30,7 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - mkdir -p /workspace/outputs
 
@@ -35,11 +41,10 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - |
         cd /workspace
-        pip install -r requirements.txt
         python scripts/init_db.py
   
   - id: generer_activites_postgres
@@ -49,11 +54,10 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - |
         cd /workspace
-        pip install -r requirements.txt
         python scripts/simulate_strava.py
 
   - id: notifier_activites_slack
@@ -63,11 +67,10 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - |
         cd /workspace
-        pip install -r requirements.txt
         python scripts/notify_slack.py
 
   - id: calculer_distances
@@ -77,7 +80,7 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - |
         cd /workspace
@@ -90,11 +93,10 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - |
         cd /workspace
-        pip install -r requirements.txt
         python scripts/validate_data_gx.py
 
   - id: calculer_impact_financier
@@ -104,15 +106,42 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - |
         cd /workspace
-        pip install -r requirements.txt
+        # Charger et nettoyer les variables du fichier .env
+        if [ -f .env ]; then
+          while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in
+              \#*|""|*$'\\r') continue ;;
+            esac
+            line=$(echo "$line" | tr -d '\r')
+            export "$line"
+          done < .env
+        fi
+        # Adapter l'hôte Postgres pour Docker
+        if [ "$POSTGRES_HOST" = "localhost" ] || [ "$POSTGRES_HOST" = "127.0.0.1" ]; then
+          export POSTGRES_HOST="host.docker.internal"
+        fi
         cd dbt_avantages_sportifs
-        dbt run --profiles-dir .
+        dbt run --profiles-dir . --vars '{"prime_percentage": {{ inputs.prime_percentage }} }'
         cd /workspace
         python scripts/export_dbt_outputs.py
+
+  - id: synchroniser_streaming_prime
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      pullPolicy: IF_NOT_PRESENT
+      volumes:
+        - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
+        - "/var/run/docker.sock:/var/run/docker.sock"
+    containerImage: projet12-kestra-runner
+    commands:
+      - |
+        cd /workspace
+        python scripts/sync_streaming.py --pct {{ inputs.prime_percentage }}
 
   - id: preparer_power_bi
     type: io.kestra.plugin.core.log.Log
@@ -130,11 +159,10 @@ tasks:
       pullPolicy: IF_NOT_PRESENT
       volumes:
         - "/run/desktop/mnt/host/c/Users/Pascal/Desktop/Projet_12:/workspace"
-    containerImage: python:3.12-slim
+    containerImage: projet12-kestra-runner
     commands:
       - |
         cd /workspace
-        pip install -r requirements.txt
         python scripts/notify_pipeline.py
 
   - id: monitoring

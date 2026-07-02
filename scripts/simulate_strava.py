@@ -14,8 +14,8 @@ QUERY_EMPLOYEES_WITH_SPORT = """
 SELECT
     rh.id_salarie,
     sp.pratique_sport
-FROM raw_rh_employes rh
-JOIN raw_sport_employes sp
+FROM rh_employes rh
+JOIN sport_employes sp
     ON TRIM(rh.id_salarie) = TRIM(sp.id_salarie)
 WHERE sp.pratique_sport IS NOT NULL AND TRIM(sp.pratique_sport) != ''
 """
@@ -124,7 +124,7 @@ def main():
     
     # 1. S'assurer de la présence de la table brute
     create_table_sql = """
-    CREATE TABLE IF NOT EXISTS raw_activites_sportives (
+    CREATE TABLE IF NOT EXISTS activites_sportives (
         id SERIAL PRIMARY KEY,
         id_salarie TEXT,
         date_debut TEXT,
@@ -140,22 +140,22 @@ def main():
     employees = pd.read_sql(QUERY_EMPLOYEES_WITH_SPORT, engine)
     
     if employees.empty:
-        print("Aucun salarié sportif trouvé dans raw_sport_employes.")
+        print("Aucun salarié sportif trouvé dans sport_employes.")
         return
         
     db_df, csv_df = build_activities(employees)
 
-    # 2. Ingestion brute dans PostgreSQL
-    with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE raw_activites_sportives;"))
+    # 2. Ingestion brute dans PostgreSQL (TRUNCATE désactivé pour la démo live)
+    # with engine.begin() as conn:
+    #     conn.execute(text("TRUNCATE TABLE activites_sportives;"))
         
     db_df.to_sql(
-        "raw_activites_sportives",
+        "activites_sportives",
         engine,
         if_exists="append",
         index=False,
     )
-    print(f"{len(db_df)} activités brutes chargées dans PostgreSQL (table raw_activites_sportives).")
+    print(f"{len(db_df)} activités brutes chargées dans PostgreSQL (table activites_sportives).")
 
     # 3. Écriture CSV unifié pour Power BI / Great Expectations
     OUTPUTS_DIR.mkdir(exist_ok=True)

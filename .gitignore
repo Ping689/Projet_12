@@ -1,7 +1,9 @@
 .venv/
 docs/
+scratch/
 .env
 __pycache__/
+.pytest_cache/
 *.pyc
 *.txt
 *.csv
@@ -11,6 +13,10 @@ __pycache__/
 
 # dbt
 dbt_avantages_sportifs/target/
-dbt_avantages_sportifs/logs/
+logs/
+*.log
 dbt_avantages_sportifs/dbt_packages/
 dbt_avantages_sportifs/.user.yml
+
+# Outputs
+outputs/

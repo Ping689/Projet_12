@@ -1,7 +1,7 @@
 {{ config(materialized='view') }}
 
 WITH raw_val AS (
-    SELECT * FROM {{ source('raw_sources', 'raw_validation_distances') }}
+    SELECT * FROM {{ source('raw_sources', 'validation_distances') }}
 )
 
 SELECT

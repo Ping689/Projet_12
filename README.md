@@ -1,182 +1,137 @@
-# POC Avantages Sportifs
+# POC Avantages Sportifs - Architecture de Streaming Temps Réel
 
 ## Objectif
 
 L'objectif est d'évaluer la faisabilité technique d'une solution encourageant l'activité physique des salariés via des incitations financières (prime sportive) et des congés supplémentaires (jours bien-être).
 
-Le but est de charger et valider les données RH et sportives fournies, puis d'exécuter un pipeline de transformation moderne (**ELT**) avec **dbt-core** permettant de :
+Dans cette version, l'architecture a été migrée d'un mode batch (ELT avec dbt) vers une **architecture de streaming en temps réel** reposant sur le Change Data Capture (**CDC** avec **Debezium**), un bus de messages (**Redpanda/Kafka**), un moteur de calcul en streaming (**Spark**), un lac de données (**Delta Lake**) et un outil de notification (**Slack**)
 
-- Charger les fichiers RH et sport d'origine (données brutes) directement dans PostgreSQL ;
-- Simuler un historique réaliste d'activités sportives (Strava-like) sur les 12 derniers mois ;
-- Valider la cohérence des trajets domicile-travail à l'aide de l'API Google Maps ;
-- Exécuter les transformations et les calculs d'impact financier en SQL natif avec dbt ;
-- Exporter les indicateurs et tables calculés (format CSV/JSON) prêts pour Power BI.
-
----
-
-## Données fournies
-
-Les fichiers sources utilisés par le projet sont :
-
-- `Donnees+RH.csv` : informations RH des salariés ;
-- `Donnees+Sportive.csv` : pratiques sportives déclarées ;
-- `Note+de+cadrage+_+POC+Avantages+Sportifs+(1).pdf` : cadrage fonctionnel du projet.
-
-Les fichiers de données ne sont pas versionnés dans Git afin de protéger les données RH (exclus via le fichier `.gitignore`).
+Les objectifs du pipeline sont :
+- Capturer chaque nouvelle activité sportive (simulée comme Strava) dès son insertion dans PostgreSQL.
+- Streamer ces événements en direct via **Debezium** et **Redpanda**.
+- Traiter, nettoyer, joindre les données avec les référentiels RH, et calculer l'impact financier en continu avec **Apache Spark Streaming**.
+- Écrire les indicateurs calculés au format **Delta Lake** (fichiers Parquet versionnés) pour **Power BI**.
+- Envoyer des alertes Slack en temps réel pour féliciter les salariés à chaque activité sportive enregistrée.
 
 ---
 
-## Structure actuelle
+## Architecture Technique
 
-```text
-.
-├── dbt_avantages_sportifs/   # Projet dbt pour les transformations SQL
-│   ├── dbt_project.yml       # Configuration principale dbt
-│   ├── profiles.yml          # Connexion PostgreSQL (Jinja + .env)
-│   └── models/               # Modèles SQL (Staging et Finance)
-├── scripts/
-│   ├── init_db.py            # Initialisation et chargement brut PostgreSQL
-│   ├── simulate_strava.py    # Simulation d'activités Strava et export CSV
-│   ├── calculate_distances.py# Validation des distances avec l'API Google Maps
-│   ├── notify_slack.py       # Notifications Slack des activités individuelles
-│   ├── notify_pipeline.py    # Notification Slack de résumé final du pipeline
-│   ├── validate_data_gx.py   # Validation de qualité de données Great Expectations
-│   └── export_dbt_outputs.py # Export des calculs dbt (CSV/JSON) pour Power BI
-├── kestra/
-│   └── analyse_donnees.yml   # Workflow d'orchestration Kestra
-├── docs/
-│   └── tests_qualite_donnees.md
-├── test_analyse_donnees.py   # Tests unitaires du projet
-├── test_slack.py             # Tests unitaires des notifications Slack
-├── requirements.txt          # Dépendances Python du projet
-├── .env.template             # Modèle de configuration des variables d'environnement
-└── README.md
+```mermaid
+graph TD
+    A[PostgreSQL: raw_activites_sportives] -->|CDC: Capture des WAL| B[Debezium Connect]
+    B -->|Publish| C[Redpanda: Topic postgres.public.raw_activites_sportives]
+    C -->|Stream Read| D[Apache Spark Streaming]
+    C -->|Stream Read| E[Slack Consumer python]
+    
+    D -->|Join with Postgres Ref Tables| D
+    PostgreSQL[(PostgreSQL Ref Tables)] -->|JDBC Read| D
+    
+    D -->|Write delta format| F[outputs/delta_finance]
+    D -->|Write delta format| G[outputs/delta_raw_activities]
+    
+    F -->|Load folder| H[Tableaux de bord Power BI]
+    E -->|Notify Webhook| I[Slack Channel]
 ```
 
 ---
 
-## Installation
+## Structure du Projet
 
+```text
+.
+├── scripts/
+│   ├── init_db.py            # Initialisation des tables brutes de référentiels (RH, Sport)
+│   ├── simulate_strava.py    # Générateur d'activités sportives simulées dans Postgres
+│   ├── calculate_distances.py# Validation des distances avec l'API Google Maps
+│   ├── register_debezium.py  # Script d'enregistrement du connecteur CDC auprès de Debezium
+│   ├── spark_stream_transform.py # Job Spark Streaming principal (calculs et Delta Lake)
+│   ├── slack_stream_consumer.py  # Consommateur léger d'alerte Slack en temps réel
+│   └── docker-compose.yml    # Orchestration Docker (Redpanda, Debezium, Spark-Streaming)
+├── outputs/
+│   ├── delta_finance/        # Table Delta Lake finale (calculs financiers pour Power BI)
+│   ├── delta_raw_activities/ # Table Delta Lake brute contenant toutes les activités
+│   └── checkpoint_finance/   # Fichiers de checkpoint pour Spark Structured Streaming
+├── test_analyse_donnees.py   # Tests unitaires du projet
+├── requirements.txt          # Dépendances Python locales
+├── .env                      # Configuration locale (Postgres, Slack, etc.)
+
+```
+
+---
+
+## Installation et Configuration
+
+### 1. Environnement Python local
 Créer et activer un environnement virtuel :
-
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-Installer les dépendances :
-
+Installer les dépendances requises (notamment `pyspark`, `delta-spark` et `kafka-python-ng`) :
 ```powershell
 pip install -r requirements.txt
 ```
 
----
+### 2. Variables d'environnement (`.env`)
+Créez un fichier `.env` à la racine avec nos accès locaux.
 
-## Configuration
-
-Copier le fichier `.env.template` en `.env`, puis renseigner la clé Google Maps et les informations de notre base de données locale PostgreSQL :
-
-```text
-GOOGLE_MAPS_API_KEY="TA_CLE_API_GOOGLE"
-SLACK_WEBHOOK_URL="URL_DU_WEBHOOK_SLACK"
-
-POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="VotreMotDePasse"
-POSTGRES_HOST="localhost"
-POSTGRES_PORT="5432"
-POSTGRES_DB="sport_data_solution"
-```
-
-Sans clé API Google Maps, le script peut s'exécuter, mais la validation automatique des distances ne sera pas active (le cache local `google_maps_cache.json` sera utilisé s'il contient déjà les adresses).
-
-Les tables d'ingestion brutes et de calculs gérées dans PostgreSQL sont :
-- `raw_rh_employes` (données RH brutes)
-- `raw_sport_employes` (sports déclarés bruts)
-- `raw_activites_sportives` (activités simulées brutes)
-- `raw_validation_distances` (retours d'API Google Maps)
-- `fct_calcul_finance` (table finale calculée par dbt)
+### 3. Configuration de la réplication logique PostgreSQL
+Pour que Debezium Connect puisse capturer les transactions PostgreSQL, nous devons activer le mode de réplication logique :
+1. Ouvrir le fichier de configuration de notre instance locale : 
+`C:\Program Files\PostgreSQL\18\data\postgresql.conf`.
+2. Définir la ligne suivante (décommenter si nécessaire) :
+   ```ini
+   wal_level = logical
+   ```
+3. Redémarrer le service Windows **`postgresql-x64-18`** depuis une console PowerShell en tant qu'administrateur :
+   ```powershell
+   Restart-Service postgresql-x64-18
+   ```
 
 ---
 
-## Lancer Kestra
+## Lancement du Pipeline de Streaming
 
-Le workflow `kestra/analyse_donnees.yml` monte ce projet dans les conteneurs Python sous le chemin `/workspace`. Kestra doit donc être lancé avec les montages Docker activés :
-
+### Étape 1 : Démarrer l'infrastructure Docker
+Lancer les conteneurs Redpanda, Debezium Connect et le moteur Spark Streaming :
 ```powershell
-docker run -d --name projet12-kestra `
-  -p 8081:8080 `
-  -v projet12_kestra_data:/app/storage `
-  -v /var/run/docker.sock:/var/run/docker.sock `
-  -v /tmp:/tmp `
-  -e KESTRA_TASKS_SCRIPTS_DOCKER_VOLUME_ENABLED=true `
-  --user root `
-  kestra/kestra:latest server local
+docker compose -f scripts/docker-compose.yml up -d
 ```
 
-Après modification de `kestra/analyse_donnees.yml`, importez à nouveau le workflow dans l'interface Kestra avant de relancer l'exécution.
-
----
-
-## Lancer l'analyse (Pipeline ELT)
-
-Pour exécuter le pipeline d'analyse complet en local :
-
-1. Charger les données brutes dans PostgreSQL :
+### Étape 2 : Initialiser la base de données PostgreSQL
+Insérer les données RH et sportives d'origine :
 ```powershell
 python scripts/init_db.py
+python scripts/calculate_distances.py
 ```
 
-2. Générer les activités Strava simulées :
+### Étape 3 : Enregistrer le connecteur CDC Debezium
+Déclarer la table `raw_activites_sportives` auprès de Debezium Connect :
+```powershell
+python scripts/register_debezium.py
+```
+
+### Étape 4 : Lancer le consommateur d'alertes Slack
+Dans un terminal distinct, lancer le consommateur temps réel pour envoyer les notifications Slack :
+```powershell
+.venv\Scripts\python scripts\slack_stream_consumer.py
+```
+
+### Étape 5 : Simuler des activités sportives (Génération de données)
+Exécuter la simulation pour générer les activités Strava. Debezium va immédiatement capturer les écritures et les transmettre à Redpanda, déclenchant ainsi le traitement Spark et les alertes Slack :
 ```powershell
 python scripts/simulate_strava.py
 ```
 
-3. Valider les distances domicile-travail :
-```powershell
-python scripts/calculate_distances.py
-```
-
-4. Exécuter les transformations dbt :
-```powershell
-cd dbt_avantages_sportifs
-dbt run --profiles-dir .
-cd ..
-```
-
-5. Exporter les calculs financiers dbt pour Power BI :
-```powershell
-python scripts/export_dbt_outputs.py
-```
-
 ---
 
-## Lancer les tests
+## Restitution dans Power BI
 
-```powershell
-python -m unittest -v
-```
+Le job Spark Streaming met à jour de façon atomique la table finale **Delta Lake** dans `outputs/delta_finance/`. 
 
-Les tests vérifient actuellement :
-- Les règles métiers de distance Google Maps (seuils de 15 km et 25 km) ;
-- Le signalement automatique d'un trajet marche/running trop long ;
-- La validité et la structure des fichiers de sortie exportés par dbt pour Power BI ;
-- Le bon formatage des notifications Slack.
-
----
-
-## Règles métier couvertes
-
-La note de cadrage demande de vérifier la cohérence des modes de déplacement déclarés avec la distance réelle domicile-travail.
-
-Règles implémentées pour cette étape :
-- **Marche / Running** : distance maximale autorisée de **15 km** ;
-- **Vélo / Trottinette / Autres** : distance maximale autorisée de **25 km** ;
-- Adresse de l'entreprise : `1362 Av. des Platanes, 34970 Lattes, France`.
-
----
-
-## Prochaines étapes de production
-
-- Industrialiser le schéma PostgreSQL avec des migrations SQL versionnées (ex. Flyway, Liquibase).
-- Activer l'architecture streaming temps réel avec Debezium et Redpanda (prévus dans le docker-compose) pour capturer les événements Strava à la volée.
-- Brancher les fichiers générés dans `outputs/` ou les tables PostgreSQL finales directement sur nos rapports de visualisation Power BI.
+Pour brancher notre tableau de bord Power BI :
+1. Dans Power BI Desktop, sélectionnez **Obtenir les données** -> **Dossier** (Folder).
+2. Choisissez le chemin local : **`C:\---\Projet_12\outputs\delta_finance`**.
+3. Chargez les fichiers Parquet consolidés. Toute nouvelle activité ingérée par le pipeline de streaming mettra à jour ce dossier à la volée.

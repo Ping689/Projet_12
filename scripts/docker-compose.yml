@@ -1,41 +1,50 @@
 services:
 
-redpanda:
-image: redpandadata/redpanda:v24.1.8
-container_name: redpanda
-restart: unless-stopped
-command:
-- redpanda
-- start
-- --overprovisioned
-- --smp=1
-- --memory=1G
-- --reserve-memory=0M
-- --node-id=0
-- --check=false
-- --kafka-addr=PLAINTEXT://0.0.0.0:9092
-- --advertise-kafka-addr=PLAINTEXT://host.docker.internal:9092
-ports:
-- "9092:9092"
-- "9644:9644"
+  redpanda:
+    image: redpandadata/redpanda:v24.1.8
+    container_name: redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      - --advertise-kafka-addr=INTERNAL://redpanda:29092,EXTERNAL://localhost:9092
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+      - "9644:9644"
 
-debezium:
-image: debezium/connect:2.6
-container_name: debezium-connect
-restart: unless-stopped
-environment:
-BOOTSTRAP_SERVERS: redpanda:9092
-GROUP_ID: 1
-CONFIG_STORAGE_TOPIC: connect_configs
-OFFSET_STORAGE_TOPIC: connect_offsets
-STATUS_STORAGE_TOPIC: connect_statuses
-ports:
-- "8083:8083"
+  debezium:
+    image: debezium/connect:2.6
+    container_name: debezium-connect
+    restart: unless-stopped
+    environment:
+      BOOTSTRAP_SERVERS: redpanda:29092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+    ports:
+      - "8083:8083"
 
-kestra:
-image: kestra/kestra:latest
-container_name: kestra
-restart: unless-stopped
-command: server standalone
-ports:
-- "8081:8080"
+  spark-streaming:
+    image: apache/spark:3.5.0
+    container_name: spark-streaming
+    user: root
+    restart: unless-stopped
+    volumes:
+      - ../:/workspace
+    working_dir: /workspace
+    env_file:
+      - ../.env
+    environment:
+      - POSTGRES_HOST=host.docker.internal
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - PYTHONPATH=/workspace
+    command: /opt/spark/bin/spark-submit --packages org.postgresql:postgresql:42.6.0,io.delta:delta-spark_2.12:3.0.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 scripts/spark_stream_transform.py

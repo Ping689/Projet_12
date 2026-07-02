@@ -1,7 +1,7 @@
 {{ config(materialized='view') }}
 
 WITH raw_rh AS (
-    SELECT * FROM {{ source('raw_sources', 'raw_rh_employes') }}
+    SELECT * FROM {{ source('raw_sources', 'rh_employes') }}
 )
 
 SELECT

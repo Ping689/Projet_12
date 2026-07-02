@@ -35,9 +35,9 @@ def get_postgres_engine():
 def main():
     engine = get_postgres_engine()
     
-    # 1. Création des tables brutes si elles n'existent pas
+    # Création des tables brutes si elles n'existent pas
     create_tables_sql = """
-    CREATE TABLE IF NOT EXISTS raw_rh_employes (
+    CREATE TABLE IF NOT EXISTS rh_employes (
         id_salarie TEXT PRIMARY KEY,
         nom TEXT,
         prenom TEXT,
@@ -51,7 +51,7 @@ def main():
         moyen_deplacement TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS raw_sport_employes (
+    CREATE TABLE IF NOT EXISTS sport_employes (
         id_salarie TEXT PRIMARY KEY,
         pratique_sport TEXT
     );
@@ -60,7 +60,7 @@ def main():
         conn.execute(text(create_tables_sql))
         print("Tables brutes vérifiées/créées.")
 
-    # 2. Lecture et insertion brute de Données+RH.csv
+    # Lecture et insertion brute de Données+RH.csv
     rh_csv = BASE_DIR / "Données+RH.csv"
     if rh_csv.exists():
         df_rh = pd.read_csv(rh_csv, sep=";")
@@ -90,14 +90,14 @@ def main():
         df_rh = df_rh[["id_salarie"] + list(column_mapping.values())]
 
         with engine.begin() as conn:
-            conn.execute(text("TRUNCATE TABLE raw_rh_employes CASCADE;"))
+            conn.execute(text("TRUNCATE TABLE rh_employes CASCADE;"))
             
-        df_rh.to_sql("raw_rh_employes", engine, if_exists="append", index=False)
-        print(f"Importation brute de {len(df_rh)} salariés dans raw_rh_employes réussie.")
+        df_rh.to_sql("rh_employes", engine, if_exists="append", index=False)
+        print(f"Importation brute de {len(df_rh)} salariés dans rh_employes réussie.")
     else:
         print("rh_clean.csv introuvable.")
 
-    # 3. Lecture et insertion brute de Données+Sportive.csv
+    # Lecture et insertion brute de Données+Sportive.csv
     sport_csv = BASE_DIR / "Données+Sportive.csv"
     if sport_csv.exists():
         df_sport = pd.read_csv(sport_csv, sep=";")
@@ -120,10 +120,10 @@ def main():
         df_sport = df_sport.drop_duplicates(subset=["id_salarie"])
 
         with engine.begin() as conn:
-            conn.execute(text("TRUNCATE TABLE raw_sport_employes CASCADE;"))
+            conn.execute(text("TRUNCATE TABLE sport_employes CASCADE;"))
             
-        df_sport.to_sql("raw_sport_employes", engine, if_exists="append", index=False)
-        print(f"Importation brute de {len(df_sport)} salariés sportifs dans raw_sport_employes réussie.")
+        df_sport.to_sql("sport_employes", engine, if_exists="append", index=False)
+        print(f"Importation brute de {len(df_sport)} salariés sportifs dans sport_employes réussie.")
     else:
         print("sport_clean.csv introuvable.")
 

@@ -50,7 +50,7 @@ SELECT
     eligible_prime,
     
     CASE 
-        WHEN eligible_prime = true THEN ROUND(salaire_brut * 0.05, 2)
+        WHEN eligible_prime = true THEN ROUND(salaire_brut * {{ var('prime_percentage', 0.05) }}, 2)
         ELSE 0.00
     END AS montant_prime,
     
@@ -66,7 +66,7 @@ SELECT
         ELSE 0.00
     END AS cout_jours_bien_etre,
     
-    (CASE WHEN eligible_prime = true THEN ROUND(salaire_brut * 0.05, 2) ELSE 0.00 END) +
+    (CASE WHEN eligible_prime = true THEN ROUND(salaire_brut * {{ var('prime_percentage', 0.05) }}, 2) ELSE 0.00 END) +
     (CASE WHEN nb_activites_sportives >= 15 THEN ROUND((salaire_brut / {{ var('working_days_per_year', 251) }}) * 5, 2) ELSE 0.00 END) AS avantage_financier_total
 
 FROM joined

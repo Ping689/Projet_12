@@ -175,9 +175,9 @@ def main():
     load_dotenv(BASE_DIR / ".env")
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     
-    # 1. S'assurer de la présence de la table brute dans PostgreSQL
+    # S'assurer de la présence de la table brute dans PostgreSQL
     create_table_sql = """
-    CREATE TABLE IF NOT EXISTS raw_validation_distances (
+    CREATE TABLE IF NOT EXISTS validation_distances (
         id_salarie TEXT,
         distance_km NUMERIC,
         status TEXT,
@@ -188,8 +188,8 @@ def main():
     with engine.begin() as conn:
         conn.execute(text(create_table_sql))
 
-    # 2. Lire les salariés depuis raw_rh_employes
-    df_rh = pd.read_sql("SELECT id_salarie, adresse_domicile, moyen_deplacement FROM raw_rh_employes", engine)
+    # Lire les salariés depuis rh_employes
+    df_rh = pd.read_sql("SELECT id_salarie, adresse_domicile, moyen_deplacement FROM rh_employes", engine)
     
     results_json = []
     results_db = []
@@ -216,18 +216,18 @@ def main():
             "suspicious": validation["suspicious"]
         })
 
-    # 3. Écrire validation_distances.json pour Power BI / GX
+    # Écrire validation_distances.json
     OUTPUTS_DIR.mkdir(exist_ok=True)
     output_path = OUTPUTS_DIR / "validation_distances.json"
     output_path.write_text(json.dumps(results_json, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Fichier validation_distances.json écrit : {output_path}")
 
-    # 4. Charger les résultats de validation dans PostgreSQL
+    # Charger les résultats de validation dans PostgreSQL
     df_db = pd.DataFrame(results_db)
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE raw_validation_distances;"))
-    df_db.to_sql("raw_validation_distances", engine, if_exists="append", index=False)
-    print(f"Chargement de {len(df_db)} validations dans PostgreSQL (table raw_validation_distances).")
+        conn.execute(text("TRUNCATE TABLE validation_distances;"))
+    df_db.to_sql("validation_distances", engine, if_exists="append", index=False)
+    print(f"Chargement de {len(df_db)} validations dans PostgreSQL (table validation_distances).")
 
 if __name__ == "__main__":
     main()
