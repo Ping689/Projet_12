@@ -19,8 +19,8 @@ Les objectifs du pipeline sont :
 
 ```mermaid
 graph TD
-    A[PostgreSQL: raw_activites_sportives] -->|CDC: Capture des WAL| B[Debezium Connect]
-    B -->|Publish| C[Redpanda: Topic postgres.public.raw_activites_sportives]
+    A[PostgreSQL: activites_sportives] -->|CDC: Capture des WAL| B[Debezium Connect]
+    B -->|Publish| C[Redpanda: Topic postgres.public.activites_sportives]
     C -->|Stream Read| D[Apache Spark Streaming]
     C -->|Stream Read| E[Slack Consumer python]
     
