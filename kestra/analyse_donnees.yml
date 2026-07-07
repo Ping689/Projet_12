@@ -173,14 +173,6 @@ tasks:
       construire des dashboards Grafana et ajouter des alertes sur échec,
       durée anormale ou volume de données incohérent.
 
-  - id: evolutions_prod_cdc_debezium
-    type: io.kestra.plugin.core.log.Log
-    message: >
-      Évolution production facultative: ajouter Debezium pour le CDC afin de
-      capturer en temps réel les changements des sources RH, sportives ou
-      Strava-like. Le CDC alimenterait une base ou un topic, puis Kestra
-      orchestrerait les contrôles, la consolidation et les exports Power BI.
-
   - id: fin
     type: io.kestra.plugin.core.log.Log
     message: "Pipeline Projet 12 termine."
