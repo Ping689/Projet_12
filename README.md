@@ -1,17 +1,21 @@
 # POC Avantages Sportifs - Architecture de Streaming Temps Réel
 
-## Objectif
+## Contexte du Projet
 
-L'objectif est d'évaluer la faisabilité technique d'une solution encourageant l'activité physique des salariés via des incitations financières (prime sportive) et des congés supplémentaires (jours bien-être).
+Le programme **"Avantages Sportifs"** est une initiative d'entreprise visant à encourager l'activité physique et à favoriser les mobilités douces des collaborateurs. Ce programme propose deux incitations majeures :
+1. **Une prime sportive** équivalente à **5% du salaire brut** pour les salariés utilisant un moyen de transport actif (marche, vélo, trottinette) de manière non suspecte.
+2. **Des jours de repos supplémentaires (Jours Bien-être)** : 5 jours de congés accordés dès que le salarié réalise au moins **15 activités sportives** sur l'année.
 
-Dans cette version, l'architecture a été migrée d'un mode batch (ELT avec dbt) vers une **architecture de streaming en temps réel** reposant sur le Change Data Capture (**CDC** avec **Debezium**), un bus de messages (**Redpanda/Kafka**), un moteur de calcul en streaming (**Spark**), un lac de données (**Delta Lake**) et un outil de notification (**Slack**)
+## Objectifs du POC
 
-Les objectifs du pipeline sont :
-- Capturer chaque nouvelle activité sportive (simulée comme Strava) dès son insertion dans PostgreSQL.
-- Streamer ces événements en direct via **Debezium** et **Redpanda**.
-- Traiter, nettoyer, joindre les données avec les référentiels RH, et calculer l'impact financier en continu avec **Apache Spark Streaming**.
-- Écrire les indicateurs calculés au format **Delta Lake** (fichiers Parquet versionnés) pour **Power BI**.
-- Envoyer des alertes Slack en temps réel pour féliciter les salariés à chaque activité sportive enregistrée.
+Ce POC valide techniquement le passage d'une architecture batch traditionnelle vers une **architecture événementielle et de streaming en temps réel** reposant sur le Change Data Capture (**CDC**). 
+
+Le pipeline mis en œuvre remplit les objectifs suivants :
+* **Capture temps réel (CDC)** : Détecter instantanément l'insertion de chaque activité sportive dans PostgreSQL via **Debezium Connect**.
+* **Transport de données** : Acheminer les événements de manière ordonnée et résiliente dans un bus de messages **Redpanda** (compatible Kafka).
+* **Streaming & Calculs à la volée** : Consommer le flux avec **Apache Spark Streaming** pour valider les distances (via l'API Google Maps), joindre les référentiels RH et calculer le budget de la prime et des Jours Bien-être en continu.
+* **Stockage structuré** : Écrire les résultats au format ouvert **Delta Lake** (Parquet avec transactions ACID) pour rafraîchir les rapports financiers dans **Power BI** sans latence.
+* **Alerte & Animation** : Publier instantanément des notifications de félicitations personnalisées sur un canal **Slack** à chaque séance de sport.
 
 ---
 
@@ -48,6 +52,8 @@ graph TD
 │   ├── spark_stream_transform.py # Job Spark Streaming principal (calculs et Delta Lake)
 │   ├── slack_stream_consumer.py  # Consommateur léger d'alerte Slack en temps réel
 │   └── docker-compose.yml    # Orchestration Docker (Redpanda, Debezium, Spark-Streaming)
+├── dbt_avantages_sportifs/    # Projet dbt Core pour la modélisation historique (PostgreSQL)
+├── kestra/                    # Workflows et scripts d'orchestration (analyse_donnees.yml)
 ├── outputs/
 │   ├── delta_finance/        # Table Delta Lake finale (calculs financiers pour Power BI)
 │   ├── delta_raw_activities/ # Table Delta Lake brute contenant toutes les activités
@@ -55,7 +61,6 @@ graph TD
 ├── test_analyse_donnees.py   # Tests unitaires du projet
 ├── requirements.txt          # Dépendances Python locales
 ├── .env                      # Configuration locale (Postgres, Slack, etc.)
-
 ```
 
 ---
@@ -75,20 +80,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Variables d'environnement (`.env`)
-Créez un fichier `.env` à la racine avec nos accès locaux.
-
-### 3. Configuration de la réplication logique PostgreSQL
-Pour que Debezium Connect puisse capturer les transactions PostgreSQL, nous devons activer le mode de réplication logique :
-1. Ouvrir le fichier de configuration de notre instance locale : 
-`C:\Program Files\PostgreSQL\18\data\postgresql.conf`.
-2. Définir la ligne suivante (décommenter si nécessaire) :
-   ```ini
-   wal_level = logical
-   ```
-3. Redémarrer le service Windows **`postgresql-x64-18`** depuis une console PowerShell en tant qu'administrateur :
-   ```powershell
-   Restart-Service postgresql-x64-18
-   ```
+Créer un fichier `.env` à la racine avec nos accès locaux.
 
 ---
 
@@ -127,11 +119,21 @@ python scripts/simulate_strava.py
 
 ---
 
+## Orchestration des Tâches avec Kestra
+
+Pour simplifier et automatiser l'exécution, l'ensemble des scripts et traitements du projet est orchestré par le workflow **Kestra** défini dans **`kestra/analyse_donnees.yml`**. 
+
+Ce workflow gère automatiquement l'enchaînement et le monitoring des tâches suivantes :
+1. **Initialisation de la base** (`init_db.py`) : Création et alimentation des tables de référence.
+2. **Calcul des distances domicile-travail** (`calculate_distances.py`) : Interrogation de l'API Google Maps et détection des trajets suspects.
+3. **Simulation Strava** (`simulate_strava.py`) : Génération des activités sportives pour les collaborateurs.
+4. **Validation de la qualité (GX)** (`validate_data_gx.py`) : Validation stricte des données avec Great Expectations.
+5. **Transformation décisionnelle (dbt)** : Compilation et exécution des modèles SQL dans PostgreSQL pour calculer les primes.
+6. **Exportation des résultats** (`export_dbt_outputs.py`) : Extraction des données transformées pour Power BI.
+7. **Alerte Slack** (`notify_slack.py`) : Envoi des messages de félicitations pour animer le programme.
+
+---
+
 ## Restitution dans Power BI
 
-Le job Spark Streaming met à jour de façon atomique la table finale **Delta Lake** dans `outputs/delta_finance/`. 
-
-Pour brancher notre tableau de bord Power BI :
-1. Dans Power BI Desktop, sélectionnez **Obtenir les données** -> **Dossier** (Folder).
-2. Choisissez le chemin local : **`C:\---\Projet_12\outputs\delta_finance`**.
-3. Chargez les fichiers Parquet consolidés. Toute nouvelle activité ingérée par le pipeline de streaming mettra à jour ce dossier à la volée.
+Le tableau de bord Power BI est connecté directement au dossier local `outputs/delta_finance/` au format Delta Lake. Les indicateurs de ce dossier sont mis à jour à la volée par le pipeline de streaming, permettant une actualisation en temps réel des graphiques financiers et RH.
