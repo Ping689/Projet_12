@@ -28,7 +28,6 @@ graph TD
     C -->|Stream Read| D[Apache Spark Streaming]
     C -->|Stream Read| E[Slack Consumer python]
     
-    D -->|Join with Postgres Ref Tables| D
     PostgreSQL[(PostgreSQL Ref Tables)] -->|JDBC Read| D
     
     D -->|Write delta format| F[outputs/delta_finance]
